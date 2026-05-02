@@ -1,0 +1,4 @@
+venv/
+.env
+temp_audio.mp3
+video.mp4
