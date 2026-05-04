@@ -10,7 +10,7 @@ map.json
 *.mp4
 *.wav
 
-# Ignore the environment file (very important for your 10 keys!)
+# Ignore the environment file
 .env# Ignore transcription results
 map.json
 
