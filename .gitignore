@@ -1,4 +1,16 @@
 venv/
 .env
 temp_audio.mp3
-video.mp4
+video.mp4 
+# Ignore transcription results
+map.json
+
+# Ignore audio/video files
+*.mp3
+*.mp4
+*.wav
+
+# Ignore the environment file
+.env# Ignore transcription results
+map.json
+
