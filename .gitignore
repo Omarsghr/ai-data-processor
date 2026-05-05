@@ -1,16 +1,15 @@
-venv/
-.env
-temp_audio.mp3
-video.mp4 
-# Ignore transcription results
-map.json
-
-# Ignore audio/video files
-*.mp3
+# Ignore the actual heavy media files (Stored only on Friend's Laptop)
+assets/
 *.mp4
-*.wav
+*.mp3
+*.png
+*.jpg
 
-# Ignore the environment file
-.env# Ignore transcription results
-map.json
+# Ignore the local database (so you don't overwrite each other's history)
+*.db
+
+# Ignore Python environment and cache
+__pycache__/
+.venv/
+.env
 
