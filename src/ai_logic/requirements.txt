@@ -1,7 +1,0 @@
-groq
-python-dotenv
-moviepy
-PyQt6
-requests
-openai-whisper
-numpy
