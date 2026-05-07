@@ -7,12 +7,14 @@ from dotenv import load_dotenv
 # 1. FOUNDATION: Load the secret keys
 load_dotenv()
 
+
 def get_hroq_client():
     """Dynamically picks one of your 6 API keys to ensure lightning speed."""
     # We choose from keys 10 through 15
     key_index = random.randint(1, 15)
     api_key = os.getenv(f"GROQ_API_KEY_{key_index}")
     return Groq(api_key=api_key)
+
 
 def analyze_any_content(transcription_text, video_type="educational"):
     # 2. THE PERSONA DICTIONARY (Intelligence Mapping)
@@ -30,13 +32,19 @@ def analyze_any_content(transcription_text, video_type="educational"):
         "other": "focus on any important keywords, names, and concepts that are relevant."
     }
 
-    selected_context = contexts.get(video_type, "focus on high-impact keywords.")
-    
+    selected_context = contexts.get(
+        video_type, "focus on high-impact keywords.")
+
     # 3. THE INSTRUCTION BODY
     system_instruction = (
-        f"You are a Video Editing Director. {selected_context} "
-        "Return ONLY a JSON object with a list 'keywords' containing: "
-        "'word', 'category', 'importance_score' (1-10), and 'visual_suggestion'."
+        f"You are a Professional Video Editing Director. {selected_context} "
+        "Analyze the user's text and identify triggers for the following actions: "
+        "1. AI Zooms: Mark 'zoom' when a point needs technical emphasis[cite: 9]. "
+        "2. Assets: Suggest 'image' or 'b-roll' for visual support[cite: 10]. "
+        "3. Music: Define 'bg_music' mood (e.g., tech, cinematic)[cite: 10]. "
+        "4. Style: Suggest 'subtitle_color' and 'color_grade'[cite: 11]. "
+        "Return ONLY a JSON object with a list 'screenplay' containing: "
+        "'word', 'action', 'asset_suggestion', 'mood', and 'style_rules'."
     )
 
     # 4. PROCESSING (Using the HROQ Bank)
@@ -47,18 +55,20 @@ def analyze_any_content(transcription_text, video_type="educational"):
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": transcription_text}
             ],
-            model="llama-3.3-70b-versatile", # Switched to 70b for better 'Architect' level reasoning
+            # Switched to 70b for better 'Architect' level reasoning
+            model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"}
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         return {"error": str(e), "status": "failed"}
 
+
 # 5. TEST THE SYSTEM
 if __name__ == "__main__":
     sample_text = "In Paris, the Eiffel Tower is amazing. You should buy our travel guide for only $10."
     print("--- HROQ Intelligence Engine Launching ---")
-    
+
     # Running marketing logic
     result = analyze_any_content(sample_text, video_type="marketing")
     print(json.dumps(result, indent=4))
