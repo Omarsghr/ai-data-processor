@@ -5,6 +5,7 @@ from groq import Groq
 from dotenv import load_dotenv
 
 # 1. FOUNDATION: Load the secret keys
+
 load_dotenv()
 
 
