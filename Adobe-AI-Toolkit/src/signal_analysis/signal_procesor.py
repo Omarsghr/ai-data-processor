@@ -1,34 +1,84 @@
+import sqlite3
 from pydub import AudioSegment, silence
 
-def detect_silence_gaps(audio_file_path,silence_thresh=-50, min_silence_len=1000):
-    """scans frequencies to find gaps in speech for automatic cuts .
-    - silence_thresh : anything quiter than this (in dB)is considered as silence
-    -min_silence_len : the minimum length of silence to be considered as a gap (in ms)
-    """
-    audio = AudioSegment.from_file(audio_file_path)
-    # this function finds the starts and end timestamps of silence 
-    slient_ranges = silence.detect_silence(
-        audio, 
-        min_silence_len=min_silence_len,
-        silence_thresh=silence_thresh
-    )
-    #convert the timestamps from ms to seconds
-    formatted_cuts = []
-    for start, end in slient_ranges:
-        formatted_cuts.append({
-            "start": start / 1000,  # convert ms to s
-            "end": end / 1000, # convert from ms to s
-            "duration": (end - start) / 1000, # duration of silence in seconds
-            "action": "cut"
-        })
-    return formatted_cuts
-if __name__ == "__main__":
-    # Test with a local audio file
-    test_file = "assets/raw_audio.mp3"
+class AdobeToolkitDB:
+    """The 'Memory' of the Service: Updated to handle Signal Data too."""
+    def __init__(self, db_name="project_memory.db"):
+        self.db_name = db_name
+        self._init_db()
+
+    def _init_db(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        # 1. AI Logic Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ai_intelligence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                keyword TEXT, ai_prompt TEXT, action_type TEXT, status TEXT DEFAULT 'PENDING'
+            )
+        ''')
+        # 2. NEW: Signal Analysis Table for Houssam's data
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS signal_cuts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_time REAL NOT NULL,
+                end_time REAL NOT NULL,
+                duration REAL,
+                is_processed INTEGER DEFAULT 0
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
+    def insert_silence_gaps(self, cut_list):
+        """Pushes detected silence ranges into the database."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        for cut in cut_list:
+            cursor.execute('''
+                INSERT INTO signal_cuts (start_time, end_time, duration)
+                VALUES (?, ?, ?)
+            ''', (cut['start'], cut['end'], cut['duration']))
+        conn.commit()
+        conn.close()
+        print(f"✅ {len(cut_list)} silence gaps saved to SQLite.")
+
+
+def detect_silence_gaps(audio_file_path, silence_thresh=-50, min_silence_len=1000):
+    """Scans audio for gaps and stores them in the database."""
+    db = AdobeToolkitDB() # Connect to memory
+    
     try:
-        cuts = detect_silence_gaps(test_file)
-        print(f"Detected {len(cuts)} silence gaps for automatic cutting.")
-        for cut in cuts:
-            print(f"Cut from {cut['start']}s to {cut['end']}s")
+        audio = AudioSegment.from_file(audio_file_path)
+        silent_ranges = silence.detect_silence(
+            audio, 
+            min_silence_len=min_silence_len,
+            silence_thresh=silence_thresh
+        )
+
+        formatted_cuts = []
+        for start, end in silent_ranges:
+            formatted_cuts.append({
+                "start": start / 1000,
+                "end": end / 1000,
+                "duration": (end - start) / 1000
+            })
+
+        # THE CONNECTION: Save to DB
+        if formatted_cuts:
+            db.insert_silence_gaps(formatted_cuts)
+            
+        return formatted_cuts
+
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error processing audio: {e}")
+        return []
+
+if __name__ == "__main__":
+    test_file = "assets/raw_audio.mp3"
+    print("--- 🎙️ Signal Analysis Service Starting ---")
+    
+    cuts = detect_silence_gaps(test_file)
+    
+    for cut in cuts:
+        print(f"Detected Gap: {cut['start']}s to {cut['end']}s")
