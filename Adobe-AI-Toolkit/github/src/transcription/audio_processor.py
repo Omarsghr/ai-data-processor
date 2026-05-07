@@ -32,6 +32,33 @@ def extract_audio(video_input, audio_output="temp_audio.mp3"):
         return None
 
 
+class AudioProcessor:
+    def process_video(self, video_path):
+        audio_file = extract_audio(video_path)
+        if audio_file:
+            # Placeholder for transcription logic
+            return "Transcription placeholder text."
+        return None
+
+
 if __name__ == "__main__":
     # Test it with your file
-    extract_audio("video.mp4__3")
+    extract_audio("video.mp4")
+
+    processor = AudioProcessor()
+    
+    # 1. Automatically find any .mp4 file in the current folder
+    video_files = [f for f in os.listdir('.') if f.endswith('.mp4')]
+    
+    if video_files:
+        target_video = video_files[0] # Pick the first video found
+        print(f"🚀 Auto-Detected: {target_video}")
+        
+        # 2. Run the full pipeline
+        result = processor.process_video(target_video)
+        
+        if result:
+            print(f"--- 🎯 Transcription Complete for {target_video} ---")
+            print(f"Preview: {result[:100]}...")
+    else:
+        print("❌ No .mp4 files found in the directory. Drop a video here to test!")

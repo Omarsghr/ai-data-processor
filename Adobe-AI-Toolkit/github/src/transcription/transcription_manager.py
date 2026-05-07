@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import json
+import time
 from groq_client import transcribe_with_groq
 from local_whisper import transcribe_local_small
 
@@ -10,7 +11,6 @@ class TranscriptionManager:
         self._init_db()
 
     def _init_db(self):
-        """Ensures the transcript table is ready for data."""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('''
@@ -25,55 +25,75 @@ class TranscriptionManager:
         conn.close()
 
     def _save_to_memory(self, text, method):
-        """Pushes the final text into the SQLite database."""
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            # We wipe the old one to keep the 'Current Project' clean
             cursor.execute("DELETE FROM transcript") 
             cursor.execute("INSERT INTO transcript (full_text, method_used) VALUES (?, ?)", (text, method))
             conn.commit()
             conn.close()
-            print(f"✅ Transcription saved to DB Memory via {method}.")
+            print(f"✅ [MEMORY] Transcript saved via {method}.")
         except Exception as e:
-            print(f"❌ Database Error: {e}")
+            print(f"❌ [DB ERROR] {e}")
+
+    def _extract_text_from_json(self, file_path):
+        """Intelligently parses JSON whether it's a list or a dict."""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # If it's a dictionary (Groq style)
+        if isinstance(data, dict):
+            return data.get("text", "")
+        
+        # If it's a list (Local Whisper segments style)
+        if isinstance(data, list):
+            # Join all 'text' fields from each segment
+            return " ".join([segment.get("text", "") for segment in data])
+        
+        return str(data)
 
     def get_transcription(self, audio_file, output_file="map.json"):
-        """Orchestrates the failover logic: Cloud -> Local."""
-        print(f"--- Starting Transcription Workflow for: {audio_file} ---")
+        print(f"\n--- 🧠 STARTING BRAIN PROCESS: {audio_file} ---")
+
+        if os.path.exists(output_file):
+            os.remove(output_file)
 
         # Attempt 1: Groq Cloud
         try:
-            print("Attempting Cloud Transcription (Groq API)...")
-            # We assume your function returns the text or writes to output_file
+            print("🚀 Attempting Groq Cloud...")
             transcribe_with_groq(audio_file, output_file)
-            
-            # Read the result from the JSON file to save to DB
-            with open(output_file, 'r') as f:
-                data = json.load(f)
-                text = data.get("text", "") # Adjust key based on your Groq output format
-            
-            self._save_to_memory(text, "GROQ_CLOUD")
-            print("Success: Processed via Groq Cloud.")
+            time.sleep(1) 
+
+            if os.path.exists(output_file):
+                text = self._extract_text_from_json(output_file)
+                if text:
+                    self._save_to_memory(text, "GROQ_CLOUD")
+                    print("✨ Success: Groq Cloud finished!")
+                    return text
+            raise FileNotFoundError("Groq output missing")
 
         except Exception as e:
-            # Fallback: Local Whisper
-            print(f"Cloud Error: {e} | Switching to Local Fallback...")
-
+            print(f"⚠️ Cloud Failed: {e}. Switching to NVIDIA GPU...")
+            
             try:
+                # Attempt 2: Local NVIDIA GPU
                 transcribe_local_small(audio_file, output_file)
                 
-                with open(output_file, 'r') as f:
-                    data = json.load(f)
-                    text = data.get("text", "")
-                
-                self._save_to_memory(text, "LOCAL_WHISPER")
-                print("Success: Processed locally.")
+                if os.path.exists(output_file):
+                    text = self._extract_text_from_json(output_file)
+                    self._save_to_memory(text, "LOCAL_WHISPER")
+                    print("✅ Success: Processed locally on NVIDIA GPU.")
+                    return text
                 
             except Exception as local_e:
-                print(f"Critical Failure: Both methods failed. {local_e}")
+                print(f"❌ CRITICAL FAILURE: {local_e}")
+                return None
 
 if __name__ == "__main__":
-    # Test run
     manager = TranscriptionManager()
-    manager.get_transcription("tips on de.mp3")
+    target_audio = "temp_audio.mp3"
+    
+    if os.path.exists(target_audio):
+        manager.get_transcription(target_audio)
+    else:
+        print("❌ Run 'audio_processor.py' first!")

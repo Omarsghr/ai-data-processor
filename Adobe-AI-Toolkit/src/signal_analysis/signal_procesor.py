@@ -1,84 +1,90 @@
-import sqlite3
-from pydub import AudioSegment, silence
+import sys
+import os
 
-class AdobeToolkitDB:
-    """The 'Memory' of the Service: Updated to handle Signal Data too."""
+# --- PYTHON 3.13 COMPATIBILITY PATCH ---
+# We manually map 'audioop-lts' to the name 'audioop' so pydub doesn't crash.
+try:
+    import audioop
+except ImportError:
+    try:
+        import importlib
+        audioop = importlib.import_module("audioop_lts")
+        sys.modules["audioop"] = audioop
+        print("🛠️ Python 3.13 Patch Applied: audioop-lts linked.")
+    except ImportError:
+        print("❌ Error: Please run 'pip install audioop-lts' in your venv first.")
+        sys.exit(1)
+
+from pydub import AudioSegment, silence
+import sqlite3
+
+class SignalProcessor:
     def __init__(self, db_name="project_memory.db"):
-        self.db_name = db_name
+        # Ensure path to DB is correct relative to the script
+        self.db_path = os.path.join(os.getcwd(), db_name)
         self._init_db()
 
     def _init_db(self):
-        conn = sqlite3.connect(self.db_name)
+        """Creates the signals table to store silence/volume data."""
+        conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        # 1. AI Logic Table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ai_intelligence (
+            CREATE TABLE IF NOT EXISTS signal_map (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                keyword TEXT, ai_prompt TEXT, action_type TEXT, status TEXT DEFAULT 'PENDING'
-            )
-        ''')
-        # 2. NEW: Signal Analysis Table for Houssam's data
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS signal_cuts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                start_time REAL NOT NULL,
-                end_time REAL NOT NULL,
-                duration REAL,
-                is_processed INTEGER DEFAULT 0
+                start_ms INTEGER,
+                end_ms INTEGER,
+                type TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         conn.commit()
         conn.close()
 
-    def insert_silence_gaps(self, cut_list):
-        """Pushes detected silence ranges into the database."""
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        for cut in cut_list:
-            cursor.execute('''
-                INSERT INTO signal_cuts (start_time, end_time, duration)
-                VALUES (?, ?, ?)
-            ''', (cut['start'], cut['end'], cut['duration']))
-        conn.commit()
-        conn.close()
-        print(f"✅ {len(cut_list)} silence gaps saved to SQLite.")
+    def analyze_audio(self, file_path):
+        """Scans for silence and important audio segments."""
+        if not os.path.exists(file_path):
+            print(f"❌ Audio file not found: {file_path}")
+            return
 
-
-def detect_silence_gaps(audio_file_path, silence_thresh=-50, min_silence_len=1000):
-    """Scans audio for gaps and stores them in the database."""
-    db = AdobeToolkitDB() # Connect to memory
-    
-    try:
-        audio = AudioSegment.from_file(audio_file_path)
+        print(f"📉 Analyzing signal for: {file_path}...")
+        audio = AudioSegment.from_file(file_path)
+        
+        # Detect silence (minimum 1 second of silence, below -40dBFS)
+        # You can adjust 'silence_thresh' if it's too sensitive
         silent_ranges = silence.detect_silence(
             audio, 
-            min_silence_len=min_silence_len,
-            silence_thresh=silence_thresh
+            min_silence_len=1000, 
+            silence_thresh=-40
         )
 
-        formatted_cuts = []
-        for start, end in silent_ranges:
-            formatted_cuts.append({
-                "start": start / 1000,
-                "end": end / 1000,
-                "duration": (end - start) / 1000
-            })
+        print(f"✅ Found {len(silent_ranges)} silent segments.")
+        self._save_signals(silent_ranges, "SILENCE")
 
-        # THE CONNECTION: Save to DB
-        if formatted_cuts:
-            db.insert_silence_gaps(formatted_cuts)
-            
-        return formatted_cuts
+    def _save_signals(self, ranges, sig_type):
+        """Saves the detected ranges to SQLite."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        # Wipe old signal data for this new test
+        cursor.execute("DELETE FROM signal_map")
+        
+        for start, end in ranges:
+            cursor.execute(
+                "INSERT INTO signal_map (start_ms, end_ms, type) VALUES (?, ?, ?)",
+                (start, end, sig_type)
+            )
+        
+        conn.commit()
+        conn.close()
+        print(f"💾 Signals saved to DB: {self.db_path}")
 
-    except Exception as e:
-        print(f"Error processing audio: {e}")
-        return []
-
+# --- EXECUTION BLOCK ---
 if __name__ == "__main__":
-    test_file = "assets/raw_audio.mp3"
-    print("--- 🎙️ Signal Analysis Service Starting ---")
+    processor = SignalProcessor()
     
-    cuts = detect_silence_gaps(test_file)
+    # Target the file your i7 created
+    target = "temp_audio.mp3"
     
-    for cut in cuts:
-        print(f"Detected Gap: {cut['start']}s to {cut['end']}s")
+    if os.path.exists(target):
+        processor.analyze_audio(target)
+    else:
+        print("❌ temp_audio.mp3 not found. Run audio_processor.py first!")
