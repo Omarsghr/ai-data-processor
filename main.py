@@ -4,39 +4,50 @@ import sys
 
 # Configuration
 ROOT_DIR = r"C:\Users\DELL\OneDrive\Desktop\auto--editor__AI"
-PYTHON_EXE = sys.executable  # Uses the Python from your (venv) automatically
+PYTHON_EXE = sys.executable 
 
-def run_script(script_path):
-    """Helper to run a sub-script and wait for it to finish."""
+def run_script(script_path, args=None):
+    """Helper to run a sub-script with optional arguments."""
     print(f"--- Running: {os.path.basename(script_path)} ---")
-    result = subprocess.run([PYTHON_EXE, script_path], capture_output=False)
+    
+    # We add args so we can pass the audio filename to the sub-scripts
+    command = [PYTHON_EXE, script_path]
+    if args:
+        command.extend(args)
+        
+    result = subprocess.run(command, capture_output=False)
     if result.returncode != 0:
         print(f"❌ Error in {script_path}. Stopping pipeline.")
-        sys.exit(1)
-    print(f"✅ Finished: {os.path.basename(script_path)}\n")
+        return False
+    return True
 
-def run_master_pipeline():
-    print("🎬 === STARTING AUTO-EDITOR AI MASTER GLUE === 🎬\n")
+def run_master_pipeline(target_audio=None):
+    """
+    The main engine. If target_audio is provided (from Server), 
+    it processes that specific file.
+    """
+    print("\n🎬 === STARTING AUTO-EDITOR AI MASTER GLUE === 🎬\n")
     
+    # Prepare arguments for sub-scripts (like the filename)
+    args = [target_audio] if target_audio else []
+
     # 1. THE EYE (Signal Analysis)
-    # This creates the 600 silence segments in the DB
     eye_script = os.path.join(ROOT_DIR, "src", "signal_analysis", "signal_processor.py")
-    run_script(eye_script)
+    if not run_script(eye_script, args): return
 
     # 2. THE BRAIN (Director)
-    # This creates the JSON screenplay based on keywords
     brain_script = os.path.join(ROOT_DIR, "src", "ai_logic", "keyword_director.py")
-    run_script(brain_script)
+    if not run_script(brain_script, args): return
 
     # 3. THE VISUALIST (Image Generation)
-    # This downloads the free images and indexes them in the DB
     visualist_script = os.path.join(ROOT_DIR, "src", "ai_logic", "visualist_generator.py")
-    run_script(visualist_script)
+    if not run_script(visualist_script, args): return
 
     print("="*50)
     print("🚀 MASTER PIPELINE COMPLETE")
-    print("📊 Project Memory DB is now fully populated.")
     print("="*50)
+    return "adobe_screenplay.json" # Return the final result for the server
 
 if __name__ == "__main__":
+    # If you run it manually:
     run_master_pipeline()
